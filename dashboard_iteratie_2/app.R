@@ -964,6 +964,11 @@ reg_table <- function(d) {
 # SHINY APP
 # =============================================================================
 
+# Lokale modus: automatisch aan als het sqlite-wachtwoordbestand niet aanwezig is.
+# Op de server staat het bestand wel -> normaal gedrag met login.
+# Lokaal ontbreekt het -> login overgeslagen, app direct zichtbaar.
+LOCAL_MODE <- !file.exists("/srv/shiny-server/passwords.sqlite")
+
 ui <- navbarPage(
   title = "SMR & Regressie Explorer",
   header = tags$head(
@@ -1307,30 +1312,35 @@ ui <- navbarPage(
 
 server <- function(input, output, session) {
   
-  res_auth <- secure_server(
-    check_credentials = check_credentials(
-      db = "/srv/shiny-server/passwords.sqlite"
+  # --- Lokale modus: shinymanager overslaan als sqlite-bestand ontbreekt ---
+  if (LOCAL_MODE) {
+    session$sendCustomMessage("show_app", TRUE)
+  } else {
+    res_auth <- secure_server(
+      check_credentials = check_credentials(
+        db = "/srv/shiny-server/passwords.sqlite"
+      )
     )
-  )
-  auth_ok <- reactiveVal(FALSE)
-  
-  observe({
-    req(reactiveValuesToList(res_auth)$user)
-    user_apps <- reactiveValuesToList(res_auth)$apps
-    if (user_apps == "all") {
-      auth_ok(TRUE)
-      session$sendCustomMessage("show_app", TRUE)
-    } else {
-      allowed <- unlist(strsplit(user_apps, ","))
-      app_name <- basename(getwd())
-      if (app_name %in% allowed) {
+    auth_ok <- reactiveVal(FALSE)
+    
+    observe({
+      req(reactiveValuesToList(res_auth)$user)
+      user_apps <- reactiveValuesToList(res_auth)$apps
+      if (user_apps == "all") {
         auth_ok(TRUE)
         session$sendCustomMessage("show_app", TRUE)
       } else {
-        session$sendCustomMessage("no_access_redirect", TRUE)
+        allowed <- unlist(strsplit(user_apps, ","))
+        app_name <- basename(getwd())
+        if (app_name %in% allowed) {
+          auth_ok(TRUE)
+          session$sendCustomMessage("show_app", TRUE)
+        } else {
+          session$sendCustomMessage("no_access_redirect", TRUE)
+        }
       }
-    }
-  })
+    })
+  }
   
   
   # --- Data: twee SMR-bestanden (standaard = met SES-correctie; en zonder SES) ---
@@ -1767,4 +1777,4 @@ server <- function(input, output, session) {
   )
 }
 
-shinyApp(secure_app(ui, enable_admin = TRUE), server)
+shinyApp(if (LOCAL_MODE) ui else secure_app(ui, enable_admin = TRUE), server)
