@@ -961,6 +961,151 @@ reg_table <- function(d) {
 
 
 # =============================================================================
+# DESCRIPTIVES (tab 4) - bron: descriptives_onafgerond.xlsx (onafgeronde aantallen)
+# =============================================================================
+DESC_FILE <- "descriptives_onafgerond.xlsx"
+DESC_NA   <- "–"
+
+desc_fmt_n   <- function(x) formatC(x, format = "d", big.mark = ".", decimal.mark = ",")
+desc_fmt_pct <- function(x) formatC(x, format = "f", digits = 1, decimal.mark = ",")
+desc_fmt_num <- function(x) formatC(x, format = "f", digits = 1, decimal.mark = ",", drop0trailing = TRUE)
+
+DESC_POP_LABELS <- c(gen = "Algemene bevolking", dia = "Dialyse", ktr = "Transplantatie")
+DESC_VAR_LABELS <- c(geslacht       = "Geslacht",
+                     leeftijd_groep = "Leeftijd (groepen)",
+                     leeftijd_small = "Leeftijd (klassen)",
+                     seswoa_cat     = "SES (WOA)",
+                     prdcat         = "PRD-categorie (code)",
+                     therapie       = "Behandelvorm")
+DESC_CAT_ORDER <- list(
+  geslacht       = c("Mannen", "Vrouwen"),
+  leeftijd_groep = c("0-19", "20-44", "45-64", "65-74", "75+"),
+  leeftijd_small = c("0-17", "18-60", "61-74", "75-84", "85+"),
+  seswoa_cat     = c("0-10%", "10-20%", "20-35%", "35-50%", "50-75%", "75-100%", "Onbekend"),
+  prdcat         = as.character(1:9),
+  therapie       = c("centrum-HD", "thuis-HD", "PD", "TX-levend", "TX-postmortaal")
+)
+
+desc_read_all <- function(path = DESC_FILE) {
+  if (!file.exists(path)) return(NULL)
+  sh  <- readxl::excel_sheets(path)
+  out <- lapply(sh, function(s) {
+    if (s == "frailty percentiles") {
+      as.data.table(suppressMessages(readxl::read_excel(path, sheet = s,
+                                                         col_names = FALSE, col_types = "text")))
+    } else {
+      as.data.table(suppressMessages(readxl::read_excel(path, sheet = s)))
+    }
+  })
+  names(out) <- sh
+  out
+}
+
+# Kenmerkentabel: kolommen = algemene bevolking / dialyse / transplantatie
+desc_char_table <- function(sh, adults = TRUE) {
+  pops <- if (adults) c(gen = "gen_pop_cat_vars_18plus", dia = "dia_cat_vars", ktr = "ktr_cat_vars")
+          else        c(gen = "gen_pop_cat_vars", dia = "dia_cat_vars_alle_leeftijden",
+                        ktr = "ktr_cat_vars_alle_leeftijden")
+  long <- rbindlist(lapply(names(pops), function(k) {
+    d <- copy(sh[[pops[[k]]]]); d[, groep := k]; d
+  }), fill = TRUE)
+  long[, categorie := as.character(categorie)]
+  # Bron labelt 75-84 als "74-84"; 75+ = "74-84" + "85+" in alle populaties
+  long[variable == "leeftijd_small" & categorie == "74-84", categorie := "75-84"]
+  # alleen kenmerken tonen die voor minstens één nierpatiëntengroep beschikbaar zijn
+  long <- long[variable %in% unique(long[groep %in% c("dia", "ktr"), variable])]
+  long[, txt := ifelse(is.na(n), DESC_NA,
+                       paste0(desc_fmt_n(n), " (", desc_fmt_pct(pct), "%)"))]
+  w <- dcast(long, variable + categorie ~ groep, value.var = "txt", fill = DESC_NA)
+  for (k in names(pops)) if (!k %in% names(w)) w[[k]] <- DESC_NA
+  w[, v_ord := match(variable, names(DESC_VAR_LABELS))]
+  w[, c_ord := mapply(function(v, c) match(c, DESC_CAT_ORDER[[v]]), variable, categorie)]
+  setorder(w, v_ord, c_ord, na.last = TRUE)
+
+  # totaal-N (uit geslacht) en mediane leeftijd bovenaan
+  tot <- long[variable == "geslacht", .(n = sum(n)), by = groep]
+  tot_txt <- setNames(desc_fmt_n(tot$n), tot$groep)
+  med_sheets <- if (adults) c(gen = "stap_leeftijd_18plus", dia = "dia_leeftijd", ktr = "ktr_leeftijd")
+                else        c(gen = "stap_leeftijd")
+  med_txt <- vapply(names(pops), function(k) {
+    if (!k %in% names(med_sheets)) return(DESC_NA)
+    m <- sh[[med_sheets[[k]]]]
+    sprintf("%s (%s–%s)", desc_fmt_num(m$median_leeftijd[1]),
+            desc_fmt_num(m$iqr25[1]), desc_fmt_num(m$iqr75[1]))
+  }, character(1))
+
+  top <- data.table(
+    Kenmerk  = c("Totaal (N)", "Leeftijd, mediaan (IQR)"),
+    Categorie = c("", ""),
+    gen = c(tot_txt[["gen"]], med_txt[["gen"]]),
+    dia = c(tot_txt[["dia"]], med_txt[["dia"]]),
+    ktr = c(tot_txt[["ktr"]], med_txt[["ktr"]]))
+  body <- w[, .(Kenmerk = unname(DESC_VAR_LABELS[variable]), Categorie = categorie,
+                gen, dia, ktr)]
+  out <- rbind(top, body)
+  # herhaalde kenmerknamen alleen bij de eerste rij tonen
+  out[duplicated(Kenmerk) & Kenmerk != "", Kenmerk := ""]
+  setnames(out, c("gen", "dia", "ktr"), unname(DESC_POP_LABELS[c("gen", "dia", "ktr")]))
+  out[]
+}
+
+desc_frailty_long <- function(sh) {
+  src <- c(gen = "frailty_group_genpop", dia = "frailty_group_dia", ktr = "frailty_group_ktr")
+  lab <- c(low = "Low", middle = "Mid", high = "High")
+  d <- rbindlist(lapply(names(src), function(k) {
+    x <- copy(sh[[src[[k]]]]); x[, groep := k]; x
+  }))
+  d[, groep := factor(DESC_POP_LABELS[groep], levels = unname(DESC_POP_LABELS))]
+  d[, frailty := factor(lab[frailty_group], levels = unname(lab))]
+  d[, .(Groep = groep, Frailty = frailty, n, pct)]
+}
+
+desc_frailty_table <- function(sh) {
+  d <- desc_frailty_long(sh)
+  d[, txt := paste0(desc_fmt_n(n), " (", desc_fmt_pct(pct), "%)")]
+  w <- dcast(d, Frailty ~ Groep, value.var = "txt")
+  setorder(w, Frailty)
+  w[, Frailty := as.character(Frailty)]
+  tot <- d[, .(n = sum(n)), by = Groep]
+  rbind(data.table(Frailty = "Totaal (N)",
+                   t(setNames(desc_fmt_n(tot$n), as.character(tot$Groep)))), w, fill = TRUE)
+}
+
+desc_frailty_cutoffs <- function(sh) {
+  p <- sh[["frailty percentiles"]]
+  num <- function(x) suppressWarnings(as.numeric(x))
+  a <- num(p[[1]]); b <- num(p[[2]])
+  cut <- which(!is.na(a) & !is.na(b))
+  txt_rows <- which(p[[1]] %in% c("low", "mid", "high"))
+  list(cutoffs = data.table(Percentiel = a[cut], Score = b[cut]),
+       shares  = data.table(Groep = c("Low", "Mid", "High")[match(p[[1]][txt_rows], c("low", "mid", "high"))],
+                            Percentage = num(p[[2]][txt_rows])))
+}
+
+desc_flow_table <- function(sh, which = c("ktr", "dia")) {
+  which <- match.arg(which)
+  d <- copy(sh[[paste("flow diagram", which)]])
+  d <- d[!is.na(pop)]
+  # "ktr" = transplantatie; in het dialyseblad staat per abuis "Ktr pop" bij de eerste stap
+  if (which == "dia") d[grepl("^Ktr pop", pop), pop := "Dialysepopulatie Nefrovisie (fpn)"]
+  d[, pop := sub("^Ktr pop", "Transplantatiepopulatie", pop)]
+  d[, pop := gsub("\\bktr\\b", "transplantatie", pop)]
+  d[, .(Stap = pop,
+        N = desc_fmt_n(aantal_new),
+        Uitgesloten = ifelse(is.na(excluded_new), "", desc_fmt_n(excluded_new)))]
+}
+
+desc_other_table <- function(sh) {
+  k <- copy(sh[["ktr_koppel"]])
+  k[, `:=`(Onderdeel = variable, Categorie = as.character(categorie),
+           n_txt = desc_fmt_n(n), pct_txt = paste0(desc_fmt_pct(pct), "%"))]
+  out <- k[, .(Onderdeel, Categorie, Populatie = "Transplantatie", n = n_txt, `%` = pct_txt)]
+  pt <- sh[["prev tp"]]
+  rbind(out, data.table(Onderdeel = "Eerder getransplanteerd, nu dialyse (peildatum 1 jan 2020)", Categorie = "",
+                        Populatie = "Dialyse", n = desc_fmt_n(pt[[1]][1]), `%` = DESC_NA))
+}
+
+# =============================================================================
 # SHINY APP
 # =============================================================================
 
@@ -1304,6 +1449,45 @@ ui <- navbarPage(
       mainPanel(
         width = 9,
         plotOutput("obs_plot", height = "560px")
+      )
+    )
+  ),
+  
+  # ---- TAB 4: Descriptives ----
+  tabPanel(
+    "Descriptives",
+    sidebarLayout(
+      sidebarPanel(
+        width = 3,
+        radioButtons("desc_section", "Onderdeel",
+                     choices = c("Populatiekenmerken" = "char",
+                                 "Frailty" = "frailty",
+                                 "Flow-diagrammen" = "flow",
+                                 "Koppeling & overig" = "other")),
+        conditionalPanel(
+          condition = "input.desc_section == 'char'",
+          radioButtons("desc_age", "Leeftijd",
+                       choices = c("Volwassenen (18+)" = "adults",
+                                   "Alle leeftijden" = "all"))
+        ),
+        conditionalPanel(
+          condition = "input.desc_section == 'flow'",
+          radioButtons("desc_flow_pop", "Populatie",
+                       choices = c("Transplantatie" = "ktr", "Dialyse" = "dia"))
+        ),
+        hr(),
+        downloadButton("desc_download_table", "Download tabel (CSV)")
+      ),
+      mainPanel(
+        width = 9,
+        h4(textOutput("desc_title")),
+        conditionalPanel(
+          condition = "input.desc_section == 'frailty'",
+          plotOutput("desc_frailty_plot", height = "320px")
+        ),
+        DT::dataTableOutput("desc_table"),
+        br(),
+        uiOutput("desc_note")
       )
     )
   )
@@ -1774,6 +1958,77 @@ server <- function(input, output, session) {
     content = function(file) {
       fwrite(obs_data_r(), file)
     }
+  )
+  
+  # ============================ TAB 4: DESCRIPTIVES ============================
+  
+  desc_sheets <- tryCatch(desc_read_all(), error = function(e) NULL)
+  
+  desc_current_r <- reactive({
+    validate(need(!is.null(desc_sheets),
+                  paste0("Descriptives-bestand niet gevonden/leesbaar: ", DESC_FILE)))
+    req(input$desc_section)
+    switch(input$desc_section,
+      char = {
+        adults <- !identical(input$desc_age, "all")
+        list(title = if (adults) "Populatiekenmerken \u2013 volwassenen (18+)"
+                     else "Populatiekenmerken \u2013 alle leeftijden",
+             table = desc_char_table(desc_sheets, adults),
+             note  = paste0(
+               "Aantal (% van de kolom); onafgeronde aantallen. Algemene bevolking = stapeling minus nierpati\u00ebnten. ",
+               if (adults) paste0("Mediane leeftijd van de algemene bevolking is berekend op de totale stapeling 18+ ",
+                                  "(incl. nierpati\u00ebnten). ")
+               else "Mediane leeftijd van dialyse/transplantatie is alleen voor volwassenen beschikbaar. ",
+               "De leeftijdsklasse \u201875-84\u2019 heet in het bronbestand \u201874-84\u2019. ",
+               "PRD-categorie: codes 1\u20139 zoals aangeleverd, zonder labels. ",
+               "\u2013 = niet beschikbaar in het bronbestand."))
+      },
+      frailty = list(title = "Frailty-verdeling (volwassenen)",
+                     table = desc_frailty_table(desc_sheets),
+                     note  = {
+                       fc <- desc_frailty_cutoffs(desc_sheets)
+                       paste0("Aantal (% van de kolom). Groepen: Low / Mid / High frailty. ",
+                              "Referentieverdeling uit het bronbestand: ",
+                              paste0(fc$shares$Groep, " ", desc_fmt_num(fc$shares$Percentage), "%",
+                                     collapse = ", "), ".")
+                     }),
+      flow = list(title = paste("Flow-diagram \u2013",
+                                if (identical(input$desc_flow_pop, "dia")) "dialyse" else "transplantatie"),
+                  table = desc_flow_table(desc_sheets,
+                                          if (identical(input$desc_flow_pop, "dia")) "dia" else "ktr"),
+                  note  = "Onafgeronde aantallen. Uitgesloten = verschil met de vorige stap."),
+      other = list(title = "Koppeling & overig",
+                   table = desc_other_table(desc_sheets),
+                   note  = "Onafgeronde aantallen.")
+    )
+  })
+  
+  output$desc_title <- renderText({ desc_current_r()$title })
+  output$desc_note  <- renderUI({ tags$small(class = "text-muted", desc_current_r()$note) })
+  
+  output$desc_table <- DT::renderDataTable({
+    d <- desc_current_r()$table
+    DT::datatable(d, rownames = FALSE, selection = "none",
+                  options = list(pageLength = 50, dom = "t", ordering = FALSE))
+  })
+  
+  output$desc_frailty_plot <- renderPlot({
+    req(identical(input$desc_section, "frailty"), !is.null(desc_sheets))
+    d <- desc_frailty_long(desc_sheets)
+    ggplot(d, aes(x = Groep, y = pct, fill = Frailty)) +
+      geom_col(width = 0.6, colour = "grey30", linewidth = 0.3) +
+      geom_text(aes(label = paste0(desc_fmt_pct(pct), "%")),
+                position = position_stack(vjust = 0.5), size = 3.5) +
+      scale_fill_manual(values = c(Low = "#a6cee3", Mid = "#fdbf6f", High = "#e31a1c")) +
+      coord_flip() +
+      labs(x = NULL, y = "% van de groep", fill = "Frailty") +
+      theme_minimal(base_size = 13) +
+      theme(panel.grid.major.y = element_blank())
+  })
+  
+  output$desc_download_table <- downloadHandler(
+    filename = function() paste0("descriptives_", input$desc_section, "_", Sys.Date(), ".csv"),
+    content  = function(file) fwrite(desc_current_r()$table, file)
   )
 }
 
