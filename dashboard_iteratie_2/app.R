@@ -2,14 +2,14 @@ library(shiny)
 library(data.table)
 library(ggplot2)
 library(colourpicker)
-library(shinymanager)
 library(readxl)
+library(writexl)
 library(DT)
 library(plotly)
 
 # --- Labels (hergebruikt in titels/legenda) ---
 TYPE_LABELS  <- c(allcause = "All-cause", covid = "COVID", cancer_cvd = "Cancer/CVD")
-GROUP_LABELS <- c(dialyse = "Dialyse", transplant = "Transplantatie")
+GROUP_LABELS <- c(dialyse = "Dialysis", transplant = "Transplantation")
 
 # --- Kolomnaam-helpers (nieuwe datastructuur) ---
 # SMR:      smr_{groep}_{outcome}_{citype}      (waarde identiek over citypes)
@@ -315,7 +315,7 @@ plot_smr <- function(dt,
                  size = 1.5)
   }
   p <- p +
-    scale_colour_manual(values = group_cols, name = "Pati\u00ebntgroep",
+    scale_colour_manual(values = group_cols, name = "Patient group",
                         labels = GROUP_LABELS[names(group_cols)]) +
     scale_x_date(date_breaks = "3 months", date_labels = "%b\n%Y",
                  limits = x_limits, expand = c(0.01, 0),
@@ -544,7 +544,7 @@ plot_mr <- function(dt,
     geom_point(data = plot_dt,
                aes(x = date, y = plot_val, colour = pgroup),
                size = 1.5) +
-    scale_colour_manual(values = group_cols, name = "Pati\u00ebntgroep",
+    scale_colour_manual(values = group_cols, name = "Patient group",
                         labels = GROUP_LABELS[names(group_cols)]) +
     scale_x_date(date_breaks = "3 months", date_labels = "%b\n%Y",
                  limits = x_limits, expand = c(0.01, 0),
@@ -612,7 +612,7 @@ plot_obs <- function(dt, groups, outcome, plot_years,
   
   type_lab <- OBS_TYPE_LABELS[[outcome]]
   grp_lab  <- paste(GROUP_LABELS[groups], collapse = " & ")
-  if (is.null(title)) title <- sprintf("Aantal sterfgevallen %s per maand \u2013 %s (%s-%s)",
+  if (is.null(title)) title <- sprintf("Number of deaths %s per month \u2013 %s (%s\u2013%s)",
                                        type_lab, grp_lab, min(plot_years), max(plot_years))
   
   p <- ggplot(pd)
@@ -622,13 +622,13 @@ plot_obs <- function(dt, groups, outcome, plot_years,
     p <- p +
       geom_col(aes(x = date, y = count, fill = pgroup),
                position = pos, width = 24) +
-      scale_fill_manual(values = group_cols, name = "Pati\u00ebntgroep",
+      scale_fill_manual(values = group_cols, name = "Patient group",
                         labels = GROUP_LABELS[names(group_cols)])
   } else {
     p <- p +
       geom_line(aes(x = date, y = count, colour = pgroup), linewidth = 0.8) +
       geom_point(aes(x = date, y = count, colour = pgroup), size = 1.6) +
-      scale_colour_manual(values = group_cols, name = "Pati\u00ebntgroep",
+      scale_colour_manual(values = group_cols, name = "Patient group",
                           labels = GROUP_LABELS[names(group_cols)])
   }
   
@@ -636,7 +636,7 @@ plot_obs <- function(dt, groups, outcome, plot_years,
     scale_x_date(date_breaks = "6 months", date_labels = "%b\n%Y",
                  limits = x_limits, expand = c(0.01, 0), oob = scales::oob_keep) +
     labs(title = title, x = NULL,
-         y = if (show_axis_titles) "Aantal sterfgevallen" else NULL) +
+         y = if (show_axis_titles) "Number of deaths" else NULL) +
     theme_bw(base_size = 12) +
     theme(legend.position = "bottom", panel.grid.minor = element_blank(),
           panel.border = element_blank(),
@@ -754,8 +754,8 @@ REG_COVS <- local({
 
 # Nette labels, afgeleid van de tabnaam-tokens (bijv. "demog_frail" -> "Demografie + frailty")
 reg_cov_label <- function(tok) {
-  m <- c(uni = "Univariaat", demog = "Demografie", ses = "SES-WOA",
-         comorb = "comorbiditeiten", opn = "opname", frail = "frailty")
+  m <- c(uni = "Univariate", demog = "Demographics", ses = "SES",
+         comorb = "comorbidities", opn = "hospitalisation", frail = "frailty")
   parts <- strsplit(tok, "_", fixed = TRUE)[[1]]
   mapped <- ifelse(parts %in% names(m), m[parts], parts)
   out <- paste(mapped, collapse = " + ")
@@ -875,7 +875,7 @@ plot_reg <- function(d, col_sig = "steelblue", col_ns = "grey60", title = NULL,
   n_hidden <- n_terms_total - nrow(dd)
   
   # tooltip-tekst voor hover (plotly) -> toont de ECHTE waarden
-  dd[, .tt := sprintf("%s\nOR %.2f (95%% BI %.2f\u2013%.2f)\np = %s",
+  dd[, .tt := sprintf("%s\nOR %.3f (95%% CI %.3f\u2013%.3f)\np = %s",
                       as.character(term_label), OR, conf.low, conf.high,
                       ifelse(p.value < 0.001, "<0.001", formatC(p.value, format = "f", digits = 3)))]
   
@@ -946,42 +946,43 @@ plot_reg <- function(d, col_sig = "steelblue", col_ns = "grey60", title = NULL,
 }
 
 reg_table <- function(d) {
-  fmt <- function(x) formatC(x, format = "f", digits = 2)
+  fmt <- function(x) formatC(x, format = "f", digits = 3)
   pf  <- function(p) ifelse(p < 0.001, "<0.001", formatC(p, format = "f", digits = 3))
-  out <- d[, .(Periode = as.character(REG_PERIOD_LABELS[period]),
+  out <- d[, .(Period = as.character(REG_PERIOD_LABELS[period]),
                Term = as.character(term_label),
-               `OR (95% BI)` = sprintf("%s (%s\u2013%s)", fmt(OR), fmt(conf.low), fmt(conf.high)),
-               `p-waarde` = pf(p.value),
+               `OR (95% CI)` = sprintf("%s (%s\u2013%s)", fmt(OR), fmt(conf.low), fmt(conf.high)),
+               `p-value` = pf(p.value),
                Model = as.character(REG_MODEL_LABELS[model]))]
-  out <- out[order(match(Periode, REG_PERIOD_LABELS), match(Model, REG_MODEL_LABELS))]
+  out <- out[order(match(Period, REG_PERIOD_LABELS), match(Model, REG_MODEL_LABELS))]
   if (length(unique(d$model)) == 1)  out[, Model := NULL]
-  if (length(unique(d$period)) == 1) out[, Periode := NULL]
+  if (length(unique(d$period)) == 1) out[, Period := NULL]
   out
 }
 
 
 # =============================================================================
-# DESCRIPTIVES (tab 4) - bron: descriptives_onafgerond.xlsx (onafgeronde aantallen)
+# DESCRIPTIVES (tab 4) - source: descriptives_onafgerond.xlsx (unrounded counts)
 # =============================================================================
 DESC_FILE <- "descriptives_onafgerond.xlsx"
 DESC_NA   <- "–"
 
-desc_fmt_n   <- function(x) formatC(x, format = "d", big.mark = ".", decimal.mark = ",")
-desc_fmt_pct <- function(x) formatC(x, format = "f", digits = 1, decimal.mark = ",")
-desc_fmt_num <- function(x) formatC(x, format = "f", digits = 1, decimal.mark = ",", drop0trailing = TRUE)
+desc_fmt_n   <- function(x) formatC(x, format = "d", big.mark = ",")
+desc_fmt_pct <- function(x) formatC(x, format = "f", digits = 1)
+desc_fmt_num <- function(x) formatC(x, format = "f", digits = 1, drop0trailing = TRUE)
 
-DESC_POP_LABELS <- c(gen = "Algemene bevolking", dia = "Dialyse", ktr = "Transplantatie")
-DESC_VAR_LABELS <- c(geslacht       = "Geslacht",
-                     leeftijd_groep = "Leeftijd (groepen)",
-                     leeftijd_small = "Leeftijd (klassen)",
+DESC_POP_LABELS <- c(gen = "General population", dia = "Dialysis", ktr = "Transplantation")
+DESC_VAR_LABELS <- c(geslacht       = "Sex",
+                     leeftijd_groep = "Age (groups)",
+                     leeftijd_small = "Age (classes)",
                      seswoa_cat     = "SES (WOA)",
-                     prdcat         = "PRD-categorie (code)",
-                     therapie       = "Behandelvorm")
+                     prdcat         = "PRD category (code)",
+                     therapie       = "Treatment type")
+DESC_CAT_LABELS <- c(Mannen = "Men", Vrouwen = "Women", Onbekend = "Unknown")
 DESC_CAT_ORDER <- list(
-  geslacht       = c("Mannen", "Vrouwen"),
+  geslacht       = c("Men", "Women"),
   leeftijd_groep = c("0-19", "20-44", "45-64", "65-74", "75+"),
   leeftijd_small = c("0-17", "18-60", "61-74", "75-84", "85+"),
-  seswoa_cat     = c("0-10%", "10-20%", "20-35%", "35-50%", "50-75%", "75-100%", "Onbekend"),
+  seswoa_cat     = c("0-10%", "10-20%", "20-35%", "35-50%", "50-75%", "75-100%", "Unknown"),
   prdcat         = as.character(1:9),
   therapie       = c("centrum-HD", "thuis-HD", "PD", "TX-levend", "TX-postmortaal")
 )
@@ -1001,7 +1002,7 @@ desc_read_all <- function(path = DESC_FILE) {
   out
 }
 
-# Kenmerkentabel: kolommen = algemene bevolking / dialyse / transplantatie
+# Characteristics table: columns = general population / dialysis / transplantation
 desc_char_table <- function(sh, adults = TRUE) {
   pops <- if (adults) c(gen = "gen_pop_cat_vars_18plus", dia = "dia_cat_vars", ktr = "ktr_cat_vars")
           else        c(gen = "gen_pop_cat_vars", dia = "dia_cat_vars_alle_leeftijden",
@@ -1010,9 +1011,10 @@ desc_char_table <- function(sh, adults = TRUE) {
     d <- copy(sh[[pops[[k]]]]); d[, groep := k]; d
   }), fill = TRUE)
   long[, categorie := as.character(categorie)]
-  # Bron labelt 75-84 als "74-84"; 75+ = "74-84" + "85+" in alle populaties
+  # The source labels 75-84 as "74-84"; 75+ = "74-84" + "85+" in every population
   long[variable == "leeftijd_small" & categorie == "74-84", categorie := "75-84"]
-  # alleen kenmerken tonen die voor minstens één nierpatiëntengroep beschikbaar zijn
+  long[categorie %in% names(DESC_CAT_LABELS), categorie := unname(DESC_CAT_LABELS[categorie])]
+  # only show characteristics available for at least one kidney patient group
   long <- long[variable %in% unique(long[groep %in% c("dia", "ktr"), variable])]
   long[, txt := ifelse(is.na(n), DESC_NA,
                        paste0(desc_fmt_n(n), " (", desc_fmt_pct(pct), "%)"))]
@@ -1022,7 +1024,7 @@ desc_char_table <- function(sh, adults = TRUE) {
   w[, c_ord := mapply(function(v, c) match(c, DESC_CAT_ORDER[[v]]), variable, categorie)]
   setorder(w, v_ord, c_ord, na.last = TRUE)
 
-  # totaal-N (uit geslacht) en mediane leeftijd bovenaan
+  # total N (from sex) and median age on top
   tot <- long[variable == "geslacht", .(n = sum(n)), by = groep]
   tot_txt <- setNames(desc_fmt_n(tot$n), tot$groep)
   med_sheets <- if (adults) c(gen = "stap_leeftijd_18plus", dia = "dia_leeftijd", ktr = "ktr_leeftijd")
@@ -1035,16 +1037,16 @@ desc_char_table <- function(sh, adults = TRUE) {
   }, character(1))
 
   top <- data.table(
-    Kenmerk  = c("Totaal (N)", "Leeftijd, mediaan (IQR)"),
-    Categorie = c("", ""),
+    Characteristic = c("Total (N)", "Age, median (IQR)"),
+    Category = c("", ""),
     gen = c(tot_txt[["gen"]], med_txt[["gen"]]),
     dia = c(tot_txt[["dia"]], med_txt[["dia"]]),
     ktr = c(tot_txt[["ktr"]], med_txt[["ktr"]]))
-  body <- w[, .(Kenmerk = unname(DESC_VAR_LABELS[variable]), Categorie = categorie,
+  body <- w[, .(Characteristic = unname(DESC_VAR_LABELS[variable]), Category = categorie,
                 gen, dia, ktr)]
   out <- rbind(top, body)
-  # herhaalde kenmerknamen alleen bij de eerste rij tonen
-  out[duplicated(Kenmerk) & Kenmerk != "", Kenmerk := ""]
+  # show a repeated characteristic name only on its first row
+  out[duplicated(Characteristic) & Characteristic != "", Characteristic := ""]
   setnames(out, c("gen", "dia", "ktr"), unname(DESC_POP_LABELS[c("gen", "dia", "ktr")]))
   out[]
 }
@@ -1057,80 +1059,59 @@ desc_frailty_long <- function(sh) {
   }))
   d[, groep := factor(DESC_POP_LABELS[groep], levels = unname(DESC_POP_LABELS))]
   d[, frailty := factor(lab[frailty_group], levels = unname(lab))]
-  d[, .(Groep = groep, Frailty = frailty, n, pct)]
+  d[, .(Group = groep, Frailty = frailty, n, pct)]
 }
 
 desc_frailty_table <- function(sh) {
   d <- desc_frailty_long(sh)
   d[, txt := paste0(desc_fmt_n(n), " (", desc_fmt_pct(pct), "%)")]
-  w <- dcast(d, Frailty ~ Groep, value.var = "txt")
+  w <- dcast(d, Frailty ~ Group, value.var = "txt")
   setorder(w, Frailty)
   w[, Frailty := as.character(Frailty)]
-  tot <- d[, .(n = sum(n)), by = Groep]
-  rbind(data.table(Frailty = "Totaal (N)",
-                   t(setNames(desc_fmt_n(tot$n), as.character(tot$Groep)))), w, fill = TRUE)
+  tot <- d[, .(n = sum(n)), by = Group]
+  rbind(data.table(Frailty = "Total (N)",
+                   t(setNames(desc_fmt_n(tot$n), as.character(tot$Group)))), w, fill = TRUE)
 }
 
-desc_frailty_cutoffs <- function(sh) {
+# Reference distribution (low / mid / high) from the "frailty percentiles" sheet
+desc_frailty_shares <- function(sh) {
   p <- sh[["frailty percentiles"]]
   num <- function(x) suppressWarnings(as.numeric(x))
-  a <- num(p[[1]]); b <- num(p[[2]])
-  cut <- which(!is.na(a) & !is.na(b))
-  txt_rows <- which(p[[1]] %in% c("low", "mid", "high"))
-  list(cutoffs = data.table(Percentiel = a[cut], Score = b[cut]),
-       shares  = data.table(Groep = c("Low", "Mid", "High")[match(p[[1]][txt_rows], c("low", "mid", "high"))],
-                            Percentage = num(p[[2]][txt_rows])))
+  rows <- which(p[[1]] %in% c("low", "mid", "high"))
+  data.table(Group = c("Low", "Mid", "High")[match(p[[1]][rows], c("low", "mid", "high"))],
+             Percentage = num(p[[2]][rows]))
 }
 
 desc_flow_table <- function(sh, which = c("ktr", "dia")) {
   which <- match.arg(which)
   d <- copy(sh[[paste("flow diagram", which)]])
   d <- d[!is.na(pop)]
-  # "ktr" = transplantatie; in het dialyseblad staat per abuis "Ktr pop" bij de eerste stap
-  if (which == "dia") d[grepl("^Ktr pop", pop), pop := "Dialysepopulatie Nefrovisie (fpn)"]
-  d[, pop := sub("^Ktr pop", "Transplantatiepopulatie", pop)]
-  d[, pop := gsub("\\bktr\\b", "transplantatie", pop)]
-  d[, .(Stap = pop,
+  # "ktr" = transplantation; the dialysis sheet wrongly says "Ktr pop" at its first step
+  if (which == "dia") d[grepl("^Ktr pop", pop), pop := "Dialysis population Nefrovisie (fpn)"]
+  d[, pop := sub("^Ktr pop", "Transplantation population", pop)]
+  d[, pop := gsub("\\bktr\\b", "transplantation", pop)]
+  d[, .(Step = pop,
         N = desc_fmt_n(aantal_new),
-        Uitgesloten = ifelse(is.na(excluded_new), "", desc_fmt_n(excluded_new)))]
+        Excluded = ifelse(is.na(excluded_new), "", desc_fmt_n(excluded_new)))]
 }
 
 desc_other_table <- function(sh) {
   k <- copy(sh[["ktr_koppel"]])
-  k[, `:=`(Onderdeel = variable, Categorie = as.character(categorie),
+  k[, `:=`(Item = variable, Category = as.character(categorie),
            n_txt = desc_fmt_n(n), pct_txt = paste0(desc_fmt_pct(pct), "%"))]
-  out <- k[, .(Onderdeel, Categorie, Populatie = "Transplantatie", n = n_txt, `%` = pct_txt)]
+  out <- k[, .(Item, Category, Population = "Transplantation", n = n_txt, `%` = pct_txt)]
   pt <- sh[["prev tp"]]
-  rbind(out, data.table(Onderdeel = "Eerder getransplanteerd, nu dialyse (peildatum 1 jan 2020)", Categorie = "",
-                        Populatie = "Dialyse", n = desc_fmt_n(pt[[1]][1]), `%` = DESC_NA))
+  rbind(out, data.table(Item = "Previously transplanted, now on dialysis (as of 1 Jan 2020)",
+                        Category = "", Population = "Dialysis",
+                        n = desc_fmt_n(pt[[1]][1]), `%` = DESC_NA))
 }
 
 # =============================================================================
 # SHINY APP
 # =============================================================================
 
-# Lokale modus: automatisch aan als het sqlite-wachtwoordbestand niet aanwezig is.
-# Op de server staat het bestand wel -> normaal gedrag met login.
-# Lokaal ontbreekt het -> login overgeslagen, app direct zichtbaar.
-LOCAL_MODE <- !file.exists("/srv/shiny-server/passwords.sqlite")
-
 ui <- navbarPage(
-  title = "SMR & Regressie Explorer",
-  header = tags$head(
-    tags$style("body { visibility: hidden; }"),
-    tags$script(HTML("
-      $(document).on('shiny:connected', function() {
-        Shiny.addCustomMessageHandler('show_app', function(x) {
-          document.body.style.visibility = 'visible';
-        });
-        Shiny.addCustomMessageHandler('no_access_redirect', function(x) {
-          document.body.style.visibility = 'visible';
-          document.body.innerHTML = '<div style=\"display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;background:white;\"><h1>Geen toegang</h1><p>Je hebt geen toegang tot deze app.</p><p>Je wordt teruggestuurd naar het loginscherm...</p></div>';
-          setTimeout(function(){ location.reload(); }, 5000);
-        });
-      });
-    "))
-  ),
+  title = "SMR & Regression Explorer",
   
   # ---- TAB 1: SMR & Mortality Rate ----
   tabPanel(
@@ -1140,10 +1121,9 @@ ui <- navbarPage(
         width = 3,
         
         # --- SMR databestand ---
-        radioButtons("smr_file", "SMR-data",
-                     choices = c("Standaard"   = "standaard",
-                                 "Zonder SES"  = "no_ses",
-                                 "Oude versie" = "oud"),
+        radioButtons("smr_file", "SMR data",
+                     choices = c("Standard" = "standaard",
+                                 "Without SES" = "no_ses"),
                      selected = "standaard"),
         
         # --- Plot type ---
@@ -1155,61 +1135,61 @@ ui <- navbarPage(
                                  "COVID" = "covid",
                                  "Cancer/CVD" = "cancer_cvd")),
         
-        # --- Patientgroep ---
-        radioButtons("group", "Pati\u00ebntgroep",
-                     choices = c("Beide groepen (overlay)" = "both",
-                                 "Dialyse" = "dialyse",
-                                 "Transplantatie" = "transplant"),
+        # --- Patient group ---
+        radioButtons("group", "Patient group",
+                     choices = c("Both groups (overlay)" = "both",
+                                 "Dialysis" = "dialyse",
+                                 "Transplantation" = "transplant"),
                      selected = "dialyse"),
         
-        sliderInput("plot_years", "Jaren",
+        sliderInput("plot_years", "Years",
                     min = 2016, max = 2023, value = c(2020, 2023),
                     step = 1, sep = ""),
         
         hr(),
         
         # --- Toggle opties ---
-        h4("Weergave opties"),
+        h4("Display options"),
         
         checkboxInput("show_waves", "COVID waves", value = TRUE),
         conditionalPanel(
           condition = "input.show_waves",
-          sliderInput("alpha_waves", "Wave transparantie",
+          sliderInput("alpha_waves", "Wave transparency",
                       min = 0.05, max = 0.5, value = 0.15, step = 0.05),
-          checkboxInput("show_wave_legend", "Wave legenda tonen", value = TRUE)
+          checkboxInput("show_wave_legend", "Show wave legend", value = TRUE)
         ),
         
-        sliderInput("border_width", "Plot rand dikte",
+        sliderInput("border_width", "Plot border width",
                     min = 0, max = 3, value = 0.5, step = 0.1),
         
-        checkboxInput("bold_axis_text", "Vette astekst", value = FALSE),
+        checkboxInput("bold_axis_text", "Bold axis text", value = FALSE),
         
-        checkboxInput("show_axis_titles", "As labels tonen", value = TRUE),
+        checkboxInput("show_axis_titles", "Show axis labels", value = TRUE),
         
-        checkboxInput("show_title", "Titel tonen", value = TRUE),
+        checkboxInput("show_title", "Show title", value = TRUE),
         
-        radioButtons("secondary", "Secundaire as",
-                     choices = c("Geen" = "none",
+        radioButtons("secondary", "Secondary axis",
+                     choices = c("None" = "none",
                                  "Stringency Index" = "stringency",
-                                 "Rioolwater (RNA)" = "rioolwater",
+                                 "Wastewater (RNA)" = "rioolwater",
                                  "Excess deaths (all-cause)" = "excess",
-                                 "Vaccinatie 1e dosis (%)" = "vacc1",
-                                 "Vaccinatie 2e doses (%)" = "vacc2",
-                                 "Vaccinatie 3+ doses (%)" = "vacc3"),
+                                 "Vaccination dose 1 (%)" = "vacc1",
+                                 "Vaccination dose 2 (%)" = "vacc2",
+                                 "Vaccination 3+ doses (%)" = "vacc3"),
                      selected = "none"),
         conditionalPanel(
           condition = "input.secondary == 'rioolwater'",
-          checkboxInput("sec_log", "Rioolwater op log-schaal", value = FALSE)
+          checkboxInput("sec_log", "Wastewater on log scale", value = FALSE)
         ),
         conditionalPanel(
           condition = "input.secondary == 'vacc1' || input.secondary == 'vacc2' || input.secondary == 'vacc3'",
-          checkboxInput("vacc_only", "Alleen vaccinatiegraad plotten", value = FALSE),
+          checkboxInput("vacc_only", "Show vaccination coverage only", value = FALSE),
           conditionalPanel(
             condition = "input.vacc_only",
-            checkboxGroupInput("vacc_doses", "Toon doses",
-                               choices = c("1e dosis"  = "vaccin1",
-                                           "2e dosis"  = "vaccin2",
-                                           "3+ doses"  = "vaccin3_more"),
+            checkboxGroupInput("vacc_doses", "Show doses",
+                               choices = c("Dose 1" = "vaccin1",
+                                           "Dose 2" = "vaccin2",
+                                           "Dose 3+" = "vaccin3_more"),
                                selected = "vaccin1")
           )
         ),
@@ -1221,7 +1201,7 @@ ui <- navbarPage(
           checkboxInput("baseline_range", "Min/Max band", value = TRUE),
           conditionalPanel(
             condition = "input.plot_func == 'smr'",
-            checkboxInput("baseline_only", "Alleen baseline tonen", value = FALSE)
+            checkboxInput("baseline_only", "Show baseline only", value = FALSE)
           )
         ),
         
@@ -1229,45 +1209,38 @@ ui <- navbarPage(
         conditionalPanel(
           condition = "input.plot_func == 'smr'",
           checkboxInput("show_ci", "Confidence intervals (SMR \u00b1 ci_diff)", value = TRUE),
-          conditionalPanel(
-            condition = "input.show_ci",
-            radioButtons("ci_type", "CI type (kiest ci_diff)",
-                         choices = c("O en E onzeker" = "O_E",
-                                     "Alleen E onzeker" = "E",
-                                     "Alleen O onzeker" = "O"),
-                         selected = "O_E")
-          )
+          
         ),
         
         # MR-specifieke opties
         conditionalPanel(
           condition = "input.plot_func == 'mr'",
           checkboxInput("per_1000", "Per 1,000", value = FALSE),
-          radioButtons("adjust_days", "Dagcorrectie",
-                       choices = c("Geen" = "none",
+          radioButtons("adjust_days", "Day correction",
+                       choices = c("None" = "none",
                                    "Maandrate (\u00d730.4375)" = "monthly",
-                                   "Dagrate" = "daily"),
+                                   "Daily rate" = "daily"),
                        selected = "none"),
           conditionalPanel(
             condition = "input.type == 'allcause'",
-            checkboxInput("mr_ref2019", "2019-gemiddelde referentielijn", value = FALSE)
+            checkboxInput("mr_ref2019", "2019 mean reference line", value = FALSE)
           )
         ),
         
         hr(),
         
         # --- Kleuren ---
-        h4("Kleuren"),
-        colourInput("col_line", "Lijn kleur (groep 1 / dialyse)", value = "steelblue"),
+        h4("Colours"),
+        colourInput("col_line", "Line colour (group 1 / dialysis)", value = "steelblue"),
         
         conditionalPanel(
           condition = "input.group == 'both'",
-          colourInput("col_line2", "Lijn kleur groep 2 (transplantatie)", value = "darkorange")
+          colourInput("col_line2", "Line colour group 2 (transplantation)", value = "darkorange")
         ),
         
         conditionalPanel(
           condition = "input.plot_func == 'smr' && input.show_ci && input.group != 'both'",
-          colourInput("col_ci", "CI kleur", value = "steelblue")
+          colourInput("col_ci", "CI colour", value = "steelblue")
         ),
         
         conditionalPanel(
@@ -1281,17 +1254,17 @@ ui <- navbarPage(
         
         conditionalPanel(
           condition = "input.secondary != 'none'",
-          colourInput("col_sec", "Kleur secundaire as", value = "darkgreen")
+          colourInput("col_sec", "Secondary axis colour", value = "darkgreen")
         ),
         
         hr(),
         
         # --- Export ---
         h4("Export"),
-        checkboxInput("transparent_bg", "Transparante achtergrond", value = FALSE),
-        checkboxInput("no_grid", "Geen raster", value = FALSE),
-        numericInput("plot_width", "Breedte (cm)", value = 30, min = 10, max = 60),
-        numericInput("plot_height", "Hoogte (cm)", value = 15, min = 5, max = 40),
+        checkboxInput("transparent_bg", "Transparent background", value = FALSE),
+        checkboxInput("no_grid", "No grid", value = FALSE),
+        numericInput("plot_width", "Width (cm)", value = 30, min = 10, max = 60),
+        numericInput("plot_height", "Height (cm)", value = 15, min = 5, max = 40),
         numericInput("plot_dpi", "DPI", value = 300, min = 72, max = 600),
         downloadButton("download_plot", "Download PNG")
       ),
@@ -1303,59 +1276,56 @@ ui <- navbarPage(
           condition = "input.secondary == 'excess'",
           hr(),
           div(style = "display:flex; justify-content:space-between; align-items:center;",
-              h5("Excess deaths per maand (all-cause)"),
+              h5("Excess deaths per month (all-cause)"),
               downloadButton("excess_download_csv", "Download CSV", style = "margin-bottom:6px;")),
           DT::dataTableOutput("excess_table")
-        )
+        ),
+        hr(),
+        div(style = "display:flex; justify-content:space-between; align-items:center;",
+            h5("Plotted data"),
+            downloadButton("smr_download_xlsx", "Download Excel", style = "margin-bottom:6px;")),
+        DT::dataTableOutput("smr_data_table")
       )
     )
   ),
   
   # ---- TAB 2: Regressie-resultaten ----
   tabPanel(
-    "Regressie-resultaten",
+    "Regression results",
     sidebarLayout(
       sidebarPanel(
         width = 3,
-        radioButtons("reg_period", "Periode",
-                     choices = c("Maart 2020" = "p1_2020",
-                                 "Maart 2021" = "p1_2021",
-                                 "Juni 2020"  = "p2_2020",
-                                 "Juni 2021"  = "p2_2021")),
-        checkboxInput("reg_compare_periods", "P1 vs P2 naast elkaar (zelfde jaar)", value = FALSE),
-        selectInput("reg_outcome", "Uitkomstvariabele",
-                    choices = c("All-cause sterfte" = "dood",
-                                "COVID-sterfte" = "covid_dood",
-                                "COVID-opname" = "opname",
-                                "COVID IC-opname" = "ic_opname",
-                                "COVID-sterfte of (IC-)opname" = "covid_dood_opname",
-                                "Positieve test" = "positieve_test")),
-        selectInput("reg_cov", "Covariatenset",
+        radioButtons("reg_period", "Period",
+                     choices = c("March 2020" = "p1_2020",
+                                 "March 2021" = "p1_2021",
+                                 "June 2020"  = "p2_2020",
+                                 "June 2021"  = "p2_2021")),
+        checkboxInput("reg_compare_periods", "P1 vs P2 side by side (same year)", value = FALSE),
+        selectInput("reg_outcome", "Outcome variable",
+                    choices = c("All-cause mortality" = "dood",
+                                "COVID mortality" = "covid_dood",
+                                "COVID hospitalisation" = "opname",
+                                "COVID ICU admission" = "ic_opname",
+                                "COVID mortality or (ICU) admission" = "covid_dood_opname",
+                                "Positive test" = "positieve_test")),
+        selectInput("reg_cov", "Covariate set",
                     choices = REG_COV_CHOICES),
-        radioButtons("reg_model", "Regressie",
-                     choices = c("Bevolking" = "bevolking",
-                                 "Nierpati\u00ebnten" = "nierpatienten",
-                                 "Beide naast elkaar" = "beide")),
-        conditionalPanel(
-          condition = "input.reg_model == 'bevolking' || input.reg_model == 'beide'",
-          radioButtons("reg_pop_filter", "Toon in bevolkingsmodel",
-                       choices = c("Dialysis + KTR" = "both",
-                                   "Alleen Dialysis" = "dialysis",
-                                   "Alleen KTR"      = "ktr"),
-                       selected = "both")
-        ),
+        radioButtons("reg_model", "Regression",
+                     choices = c("Population" = "bevolking",
+                                 "Kidney patients" = "nierpatienten",
+                                 "Both side by side" = "beide")),
         
         hr(),
-        checkboxInput("reg_show_title", "Titel tonen", value = TRUE),
-        colourInput("reg_col_sig", "Kleur significant (p<0.05)", value = "steelblue"),
-        colourInput("reg_col_ns", "Kleur niet-significant", value = "grey60"),
+        checkboxInput("reg_show_title", "Show title", value = TRUE),
+        colourInput("reg_col_sig", "Colour significant (p<0.05)", value = "steelblue"),
+        colourInput("reg_col_ns", "Colour non-significant", value = "grey60"),
         
-        checkboxInput("reg_cap_or", "Grote OR's beperken (schaal leesbaar houden)", value = TRUE),
+        checkboxInput("reg_cap_or", "Cap large ORs (keep scale readable)", value = TRUE),
         conditionalPanel(
           condition = "input.reg_cap_or",
           numericInput("reg_or_max", "Max OR in plot", value = 100, min = 2, max = 100000)
         ),
-        checkboxInput("reg_fixed_x", "Vaste x-as (zelfde bereik over plots)", value = FALSE),
+        checkboxInput("reg_fixed_x", "Fixed x-axis (same range across plots)", value = FALSE),
         conditionalPanel(
           condition = "input.reg_fixed_x",
           fluidRow(
@@ -1363,36 +1333,37 @@ ui <- navbarPage(
             column(6, numericInput("reg_xmax", "Max OR", value = 10,  min = 1,     max = 1000, step = 1))
           )
         ),
-        checkboxInput("reg_fixed_y", "Vaste y-as (vast aantal termen)", value = FALSE),
+        checkboxInput("reg_fixed_y", "Fixed y-axis (fixed number of terms)", value = FALSE),
         conditionalPanel(
           condition = "input.reg_fixed_y",
-          numericInput("reg_n_ticks", "Aantal termen op y-as", value = 9, min = 1, max = 30, step = 1)
+          numericInput("reg_n_ticks", "Number of terms on y-axis", value = 9, min = 1, max = 30, step = 1)
         ),
         
         hr(),
-        h4("Weergave"),
-        checkboxInput("reg_show_title", "Titel tonen", value = TRUE),
-        checkboxInput("reg_bold_axis", "Vette astekst", value = FALSE),
-        checkboxInput("reg_show_axis_titles", "As labels tonen", value = TRUE),
-        sliderInput("reg_border_width", "Plot rand dikte",
+        h4("Display"),
+        checkboxInput("reg_show_title", "Show title", value = TRUE),
+        checkboxInput("reg_bold_axis", "Bold axis text", value = FALSE),
+        checkboxInput("reg_show_axis_titles", "Show axis labels", value = TRUE),
+        sliderInput("reg_border_width", "Plot border width",
                     min = 0, max = 3, value = 0.7, step = 0.1),
         
         hr(),
         h4("Export"),
-        checkboxInput("reg_transparent_bg", "Transparante achtergrond", value = FALSE),
-        checkboxInput("reg_no_grid", "Geen raster", value = FALSE),
-        numericInput("reg_plot_width", "Breedte (cm)", value = 28, min = 10, max = 60),
-        numericInput("reg_plot_height", "Hoogte (cm)", value = 14, min = 5, max = 40),
+        checkboxInput("reg_transparent_bg", "Transparent background", value = FALSE),
+        checkboxInput("reg_no_grid", "No grid", value = FALSE),
+        numericInput("reg_plot_width", "Width (cm)", value = 28, min = 10, max = 60),
+        numericInput("reg_plot_height", "Height (cm)", value = 14, min = 5, max = 40),
         numericInput("reg_plot_dpi", "DPI", value = 300, min = 72, max = 600),
-        downloadButton("reg_download_plot", "Download plot (PNG)"),
-        br(), br(),
-        downloadButton("reg_download_table", "Download tabel (CSV)")
+        downloadButton("reg_download_plot", "Download plot (PNG)")
       ),
       
       mainPanel(
         width = 9,
         plotly::plotlyOutput("reg_plot", height = "520px"),
         hr(),
+        div(style = "display:flex; justify-content:space-between; align-items:center;",
+            h5("Regression results"),
+            downloadButton("reg_download_xlsx", "Download Excel", style = "margin-bottom:6px;")),
         DT::dataTableOutput("reg_table")
       )
     )
@@ -1400,46 +1371,46 @@ ui <- navbarPage(
   
   # ---- TAB 3: Aantal per maand ----
   tabPanel(
-    "Aantal per maand",
+    "Monthly counts",
     sidebarLayout(
       sidebarPanel(
         width = 3,
-        radioButtons("obs_group", "Pati\u00ebntgroep",
-                     choices = c("Beide groepen" = "both",
-                                 "Dialyse" = "dialyse",
-                                 "Transplantatie" = "transplant"),
+        radioButtons("obs_group", "Patient group",
+                     choices = c("Both groups" = "both",
+                                 "Dialysis" = "dialyse",
+                                 "Transplantation" = "transplant"),
                      selected = "dialyse"),
         radioButtons("obs_outcome", "Outcome",
                      choices = c("All-cause" = "allcause",
                                  "COVID" = "covid",
                                  "Cancer/CVD" = "cancer_cvd")),
-        sliderInput("obs_years", "Jaren",
+        sliderInput("obs_years", "Years",
                     min = 2016, max = 2023, value = c(2016, 2023),
                     step = 1, sep = ""),
-        radioButtons("obs_chart", "Grafiektype",
-                     choices = c("Staaf" = "bar", "Lijn" = "line")),
+        radioButtons("obs_chart", "Chart type",
+                     choices = c("Bar" = "bar", "Line" = "line")),
         conditionalPanel(
           condition = "input.obs_chart == 'bar' && input.obs_group == 'both'",
-          radioButtons("obs_position", "Staven",
-                       choices = c("Naast elkaar" = "dodge", "Gestapeld" = "stack"))
+          radioButtons("obs_position", "Bars",
+                       choices = c("Side by side" = "dodge", "Stacked" = "stack"))
         ),
         
         hr(),
-        checkboxInput("obs_show_title", "Titel tonen", value = TRUE),
-        checkboxInput("obs_axis_titles", "As labels tonen", value = TRUE),
-        checkboxInput("obs_bold_axis", "Vette astekst", value = FALSE),
-        sliderInput("obs_border_width", "Plot rand dikte",
+        checkboxInput("obs_show_title", "Show title", value = TRUE),
+        checkboxInput("obs_axis_titles", "Show axis labels", value = TRUE),
+        checkboxInput("obs_bold_axis", "Bold axis text", value = FALSE),
+        sliderInput("obs_border_width", "Plot border width",
                     min = 0, max = 3, value = 0.5, step = 0.1),
-        colourInput("obs_col1", "Kleur (groep 1 / dialyse)", value = "steelblue"),
+        colourInput("obs_col1", "Colour (group 1 / dialysis)", value = "steelblue"),
         conditionalPanel(
           condition = "input.obs_group == 'both'",
-          colourInput("obs_col2", "Kleur groep 2 (transplantatie)", value = "darkorange")
+          colourInput("obs_col2", "Colour group 2 (transplantation)", value = "darkorange")
         ),
         
         hr(),
         h4("Export"),
-        numericInput("obs_plot_width", "Breedte (cm)", value = 28, min = 10, max = 60),
-        numericInput("obs_plot_height", "Hoogte (cm)", value = 13, min = 5, max = 40),
+        numericInput("obs_plot_width", "Width (cm)", value = 28, min = 10, max = 60),
+        numericInput("obs_plot_height", "Height (cm)", value = 13, min = 5, max = 40),
         numericInput("obs_plot_dpi", "DPI", value = 300, min = 72, max = 600),
         downloadButton("obs_download_plot", "Download plot (PNG)"),
         br(), br(),
@@ -1448,35 +1419,40 @@ ui <- navbarPage(
       
       mainPanel(
         width = 9,
-        plotOutput("obs_plot", height = "560px")
+        plotOutput("obs_plot", height = "560px"),
+        hr(),
+        div(style = "display:flex; justify-content:space-between; align-items:center;",
+            h5("Plotted data"),
+            downloadButton("obs_download_xlsx", "Download Excel", style = "margin-bottom:6px;")),
+        DT::dataTableOutput("obs_data_table")
       )
     )
   ),
-  
+
   # ---- TAB 4: Descriptives ----
   tabPanel(
     "Descriptives",
     sidebarLayout(
       sidebarPanel(
         width = 3,
-        radioButtons("desc_section", "Onderdeel",
-                     choices = c("Populatiekenmerken" = "char",
+        radioButtons("desc_section", "Section",
+                     choices = c("Population characteristics" = "char",
                                  "Frailty" = "frailty",
-                                 "Flow-diagrammen" = "flow",
-                                 "Koppeling & overig" = "other")),
+                                 "Flow diagrams" = "flow",
+                                 "Linkage & other" = "other")),
         conditionalPanel(
           condition = "input.desc_section == 'char'",
-          radioButtons("desc_age", "Leeftijd",
-                       choices = c("Volwassenen (18+)" = "adults",
-                                   "Alle leeftijden" = "all"))
+          radioButtons("desc_age", "Age",
+                       choices = c("Adults (18+)" = "adults",
+                                   "All ages" = "all"))
         ),
         conditionalPanel(
           condition = "input.desc_section == 'flow'",
-          radioButtons("desc_flow_pop", "Populatie",
-                       choices = c("Transplantatie" = "ktr", "Dialyse" = "dia"))
+          radioButtons("desc_flow_pop", "Population",
+                       choices = c("Transplantation" = "ktr", "Dialysis" = "dia"))
         ),
         hr(),
-        downloadButton("desc_download_table", "Download tabel (CSV)")
+        downloadButton("desc_download_table", "Download table (CSV)")
       ),
       mainPanel(
         width = 9,
@@ -1496,36 +1472,6 @@ ui <- navbarPage(
 
 server <- function(input, output, session) {
   
-  # --- Lokale modus: shinymanager overslaan als sqlite-bestand ontbreekt ---
-  if (LOCAL_MODE) {
-    session$sendCustomMessage("show_app", TRUE)
-  } else {
-    res_auth <- secure_server(
-      check_credentials = check_credentials(
-        db = "/srv/shiny-server/passwords.sqlite"
-      )
-    )
-    auth_ok <- reactiveVal(FALSE)
-    
-    observe({
-      req(reactiveValuesToList(res_auth)$user)
-      user_apps <- reactiveValuesToList(res_auth)$apps
-      if (user_apps == "all") {
-        auth_ok(TRUE)
-        session$sendCustomMessage("show_app", TRUE)
-      } else {
-        allowed <- unlist(strsplit(user_apps, ","))
-        app_name <- basename(getwd())
-        if (app_name %in% allowed) {
-          auth_ok(TRUE)
-          session$sendCustomMessage("show_app", TRUE)
-        } else {
-          session$sendCustomMessage("no_access_redirect", TRUE)
-        }
-      }
-    })
-  }
-  
   
   # --- Data: twee SMR-bestanden (standaard = met SES-correctie; en zonder SES) ---
   load_smr <- function(path) {
@@ -1540,8 +1486,7 @@ server <- function(input, output, session) {
     d[]
   }
   smr_data_files <- c(standaard = "smr_data_updated.csv",
-                      no_ses    = "smr_data_updated_no_ses.csv",
-                      oud       = "smr_data_output.csv")
+                      no_ses    = "smr_data_updated_no_ses.csv")
   smr_sets <- lapply(smr_data_files, function(p) tryCatch(load_smr(p), error = function(e) NULL))
   
   smr_dt_r <- reactive({
@@ -1614,8 +1559,8 @@ server <- function(input, output, session) {
     } else if (identical(input$secondary, "rioolwater")) {
       dw <- rioolwater_monthly[data.table::year(date) %in% yrs]
       if (nrow(dw) > 0) {
-        lab <- if (isTRUE(input$sec_log)) "Rioolwater (\u00d710\u00b9\u00b2 RNA/100.000, log)"
-        else "Rioolwater (\u00d710\u00b9\u00b2 RNA/100.000)"
+        lab <- if (isTRUE(input$sec_log)) "Wastewater (\u00d710\u00b9\u00b2 RNA/100,000, log)"
+        else "Wastewater (\u00d710\u00b9\u00b2 RNA/100,000)"
         list(type = "rioolwater",
              data = dw[, .(date, pgroup = NA_character_, value)],
              lo = min(dw$value), hi = max(dw$value),
@@ -1667,7 +1612,7 @@ server <- function(input, output, session) {
                baseline_only = isTRUE(input$baseline_only),
                baseline_years = bl_years,
                show_ci = input$show_ci,
-               ci_type = input$ci_type,
+               ci_type = "O_E",
                show_waves = input$show_waves,
                sec_type = ss$type,
                alpha_waves = input$alpha_waves,
@@ -1763,18 +1708,18 @@ server <- function(input, output, session) {
     ex <- calc_excess(dt, groups_sel, yrs)
     if (is.null(ex) || nrow(ex) == 0) return(NULL)
     ex[, .(
-      Jaar    = data.table::year(date),
-      Maand   = month.abb[data.table::month(date)],
-      Groep   = fifelse(pgroup == "dialyse", "Dialyse", "Transplantatie"),
+      Year  = data.table::year(date),
+      Month = month.abb[data.table::month(date)],
+      Group = fifelse(pgroup == "dialyse", "Dialysis", "Transplantation"),
       `Excess deaths` = round(value, 2)
-    )][order(Jaar, data.table::month(ex$date), Groep)]
+    )][order(Year, data.table::month(ex$date), Group)]
   })
   
   output$excess_table <- DT::renderDataTable({
     d <- excess_table_r(); req(!is.null(d))
     DT::datatable(d, rownames = FALSE,
                   options = list(pageLength = 24, dom = "tip"),
-                  caption = "Excess deaths = geobserveerde sterfgevallen minus maandgemiddelde 2016\u20132019")
+                  caption = "Excess deaths = observed deaths minus monthly mean 2016\u20132019")
   })
   
   output$excess_download_csv <- downloadHandler(
@@ -1953,83 +1898,176 @@ server <- function(input, output, session) {
   output$obs_download_table <- downloadHandler(
     filename = function() {
       grp <- if (input$obs_group == "both") "both" else input$obs_group
-      paste0("aantal_", input$obs_outcome, "_", grp, "_", Sys.Date(), ".csv")
+      paste0("counts_", input$obs_outcome, "_", grp, "_", Sys.Date(), ".csv")
     },
     content = function(file) {
       fwrite(obs_data_r(), file)
     }
   )
   
+  # ==== SMR/MR datatabel ====
+  smr_table_r <- reactive({
+    dt   <- smr_dt_r()
+    grp_sel <- if (is.null(input$group)) "dialyse" else input$group
+    groups_sel <- if (grp_sel == "both") c("dialyse", "transplant") else grp_sel
+    yrs  <- input$plot_years[1]:input$plot_years[2]
+    
+    if (input$plot_func == "smr") {
+      rbindlist(lapply(groups_sel, function(g) {
+        col  <- smr_colname(g, input$type, "O_E")
+        dcol <- diff_colname(g, input$type, "O_E")
+        d <- dt[year %in% yrs & !is.na(get(col)),
+                .(Year = year, Month = month.abb[month],
+                  Group = ifelse(g == "dialyse", "Dialysis", "Transplantation"),
+                  SMR = round(get(col), 3),
+                  CI_low  = round(get(col) - get(dcol), 3),
+                  CI_high = round(get(col) + get(dcol), 3))]
+        setnames(d, c("CI_low","CI_high"), c("CI low","CI high"))
+        d
+      }), fill = TRUE)
+    } else {
+      transform_val <- function(mr, days) {
+        v <- switch(input$adjust_days,
+                    none    = mr,
+                    monthly = mr * (30.4375 / days),
+                    daily   = mr / days)
+        if (isTRUE(input$per_1000)) v * 1000 else v
+      }
+      rbindlist(lapply(groups_sel, function(g) {
+        mr_col <- mr_colname(g, input$type, names(dt))
+        dt[year %in% yrs & !is.na(get(mr_col)),
+           .(Year = year, Month = month.abb[month],
+             Group = ifelse(g == "dialyse", "Dialysis", "Transplantation"),
+             `Mortality rate` = round(transform_val(get(mr_col), days_in_month), 6))]
+      }), fill = TRUE)
+    }
+  })
+  
+  output$smr_data_table <- DT::renderDataTable({
+    DT::datatable(smr_table_r(), rownames = FALSE,
+                  options = list(pageLength = 24, dom = "tip"))
+  })
+  
+  output$smr_download_xlsx <- downloadHandler(
+    filename = function() {
+      grp <- if (is.null(input$group)) "dialysis" else input$group
+      paste0(input$plot_func, "_", input$type, "_", grp, "_", Sys.Date(), ".xlsx")
+    },
+    content = function(file) {
+      writexl::write_xlsx(as.data.frame(smr_table_r()), file)
+    }
+  )
+  
+  output$reg_download_xlsx <- downloadHandler(
+    filename = function() {
+      paste0("regression_", input$reg_period, "_", input$reg_outcome, "_",
+             input$reg_cov, "_", Sys.Date(), ".xlsx")
+    },
+    content = function(file) {
+      d <- reg_data_r(); req(d)
+      writexl::write_xlsx(as.data.frame(reg_table(d)), file)
+    }
+  )
+  
+  output$obs_data_table <- DT::renderDataTable({
+    d <- obs_data_r()
+    d_fmt <- data.table(
+      Year  = d$jaar,
+      Month = month.abb[d$maand],
+      Group = ifelse(d$groep == "dialyse", "Dialysis", "Transplantation"),
+      `Number of deaths` = d$aantal
+    )
+    DT::datatable(d_fmt, rownames = FALSE,
+                  options = list(pageLength = 24, dom = "tip"))
+  })
+  
+  output$obs_download_xlsx <- downloadHandler(
+    filename = function() {
+      grp <- if (input$obs_group == "both") "both" else input$obs_group
+      paste0("counts_", input$obs_outcome, "_", grp, "_", Sys.Date(), ".xlsx")
+    },
+    content = function(file) {
+      d <- obs_data_r()
+      d_fmt <- data.frame(
+        Year  = d$jaar,
+        Month = month.abb[d$maand],
+        Group = ifelse(d$groep == "dialyse", "Dialysis", "Transplantation"),
+        `Number of deaths` = d$aantal,
+        check.names = FALSE
+      )
+      writexl::write_xlsx(d_fmt, file)
+    }
+  )
+
   # ============================ TAB 4: DESCRIPTIVES ============================
-  
+
   desc_sheets <- tryCatch(desc_read_all(), error = function(e) NULL)
-  
+
   desc_current_r <- reactive({
     validate(need(!is.null(desc_sheets),
-                  paste0("Descriptives-bestand niet gevonden/leesbaar: ", DESC_FILE)))
+                  paste0("Descriptives file not found/readable: ", DESC_FILE)))
     req(input$desc_section)
     switch(input$desc_section,
       char = {
         adults <- !identical(input$desc_age, "all")
-        list(title = if (adults) "Populatiekenmerken \u2013 volwassenen (18+)"
-                     else "Populatiekenmerken \u2013 alle leeftijden",
+        list(title = if (adults) "Population characteristics – adults (18+)"
+                     else "Population characteristics – all ages",
              table = desc_char_table(desc_sheets, adults),
              note  = paste0(
-               "Aantal (% van de kolom); onafgeronde aantallen. Algemene bevolking = stapeling minus nierpati\u00ebnten. ",
-               if (adults) paste0("Mediane leeftijd van de algemene bevolking is berekend op de totale stapeling 18+ ",
-                                  "(incl. nierpati\u00ebnten). ")
-               else "Mediane leeftijd van dialyse/transplantatie is alleen voor volwassenen beschikbaar. ",
-               "De leeftijdsklasse \u201875-84\u2019 heet in het bronbestand \u201874-84\u2019. ",
-               "PRD-categorie: codes 1\u20139 zoals aangeleverd, zonder labels. ",
-               "\u2013 = niet beschikbaar in het bronbestand."))
+               "Count (% of column); unrounded counts. General population = linked population minus kidney patients. ",
+               if (adults) paste0("Median age of the general population is calculated on the total linked population 18+ ",
+                                  "(incl. kidney patients). ")
+               else "Median age of dialysis/transplantation is only available for adults. ",
+               "The age class '75-84' is labelled '74-84' in the source file. ",
+               "PRD category: codes 1–9 as supplied, without labels. ",
+               "– = not available in the source file."))
       },
-      frailty = list(title = "Frailty-verdeling (volwassenen)",
+      frailty = list(title = "Frailty distribution (adults)",
                      table = desc_frailty_table(desc_sheets),
                      note  = {
-                       fc <- desc_frailty_cutoffs(desc_sheets)
-                       paste0("Aantal (% van de kolom). Groepen: Low / Mid / High frailty. ",
-                              "Referentieverdeling uit het bronbestand: ",
-                              paste0(fc$shares$Groep, " ", desc_fmt_num(fc$shares$Percentage), "%",
-                                     collapse = ", "), ".")
+                       fs <- desc_frailty_shares(desc_sheets)
+                       paste0("Count (% of column). Groups: Low / Mid / High frailty. ",
+                              "Reference distribution from the source file: ",
+                              paste0(fs$Group, " ", desc_fmt_num(fs$Percentage), "%", collapse = ", "), ".")
                      }),
-      flow = list(title = paste("Flow-diagram \u2013",
-                                if (identical(input$desc_flow_pop, "dia")) "dialyse" else "transplantatie"),
+      flow = list(title = paste("Flow diagram –",
+                                if (identical(input$desc_flow_pop, "dia")) "dialysis" else "transplantation"),
                   table = desc_flow_table(desc_sheets,
                                           if (identical(input$desc_flow_pop, "dia")) "dia" else "ktr"),
-                  note  = "Onafgeronde aantallen. Uitgesloten = verschil met de vorige stap."),
-      other = list(title = "Koppeling & overig",
+                  note  = "Unrounded counts. Excluded = difference with the previous step."),
+      other = list(title = "Linkage & other",
                    table = desc_other_table(desc_sheets),
-                   note  = "Onafgeronde aantallen.")
+                   note  = "Unrounded counts.")
     )
   })
-  
+
   output$desc_title <- renderText({ desc_current_r()$title })
   output$desc_note  <- renderUI({ tags$small(class = "text-muted", desc_current_r()$note) })
-  
+
   output$desc_table <- DT::renderDataTable({
     d <- desc_current_r()$table
     DT::datatable(d, rownames = FALSE, selection = "none",
                   options = list(pageLength = 50, dom = "t", ordering = FALSE))
   })
-  
+
   output$desc_frailty_plot <- renderPlot({
     req(identical(input$desc_section, "frailty"), !is.null(desc_sheets))
     d <- desc_frailty_long(desc_sheets)
-    ggplot(d, aes(x = Groep, y = pct, fill = Frailty)) +
+    ggplot(d, aes(x = Group, y = pct, fill = Frailty)) +
       geom_col(width = 0.6, colour = "grey30", linewidth = 0.3) +
       geom_text(aes(label = paste0(desc_fmt_pct(pct), "%")),
                 position = position_stack(vjust = 0.5), size = 3.5) +
       scale_fill_manual(values = c(Low = "#a6cee3", Mid = "#fdbf6f", High = "#e31a1c")) +
       coord_flip() +
-      labs(x = NULL, y = "% van de groep", fill = "Frailty") +
+      labs(x = NULL, y = "% of group", fill = "Frailty") +
       theme_minimal(base_size = 13) +
       theme(panel.grid.major.y = element_blank())
   })
-  
+
   output$desc_download_table <- downloadHandler(
     filename = function() paste0("descriptives_", input$desc_section, "_", Sys.Date(), ".csv"),
     content  = function(file) fwrite(desc_current_r()$table, file)
   )
 }
 
-shinyApp(if (LOCAL_MODE) ui else secure_app(ui, enable_admin = TRUE), server)
+shinyApp(ui, server)
