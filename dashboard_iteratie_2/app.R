@@ -1095,6 +1095,16 @@ desc_flow_table <- function(sh, which = c("ktr", "dia")) {
         Excluded = ifelse(is.na(excluded_new), "", desc_fmt_n(excluded_new)))]
 }
 
+# Both flow diagrams (transplantation and dialysis) in one overview table
+desc_flow_all <- function(sh) {
+  rbindlist(lapply(c(ktr = "ktr", dia = "dia"), function(w) {
+    d <- desc_flow_table(sh, w)
+    d[, Population := unname(DESC_POP_LABELS[w])]
+    setcolorder(d, c("Population", "Step", "N", "Excluded"))
+    d
+  }))
+}
+
 desc_other_table <- function(sh) {
   k <- copy(sh[["ktr_koppel"]])
   k[, `:=`(Item = variable, Category = as.character(categorie),
@@ -1432,6 +1442,9 @@ ui <- navbarPage(
   # ---- TAB 4: Descriptives ----
   tabPanel(
     "Descriptives",
+    div(class = "alert alert-info", style = "margin: 10px 15px;",
+        strong("Reference date: 1 January 2020."),
+        " All descriptives on this tab are based on this reference date."),
     sidebarLayout(
       sidebarPanel(
         width = 3,
@@ -1445,11 +1458,6 @@ ui <- navbarPage(
           radioButtons("desc_age", "Age",
                        choices = c("Adults (18+)" = "adults",
                                    "All ages" = "all"))
-        ),
-        conditionalPanel(
-          condition = "input.desc_section == 'flow'",
-          radioButtons("desc_flow_pop", "Population",
-                       choices = c("Transplantation" = "ktr", "Dialysis" = "dia"))
         ),
         hr(),
         downloadButton("desc_download_table", "Download table (CSV)")
@@ -2030,10 +2038,8 @@ server <- function(input, output, session) {
                               "Reference distribution from the source file: ",
                               paste0(fs$Group, " ", desc_fmt_num(fs$Percentage), "%", collapse = ", "), ".")
                      }),
-      flow = list(title = paste("Flow diagram –",
-                                if (identical(input$desc_flow_pop, "dia")) "dialysis" else "transplantation"),
-                  table = desc_flow_table(desc_sheets,
-                                          if (identical(input$desc_flow_pop, "dia")) "dia" else "ktr"),
+      flow = list(title = "Flow diagrams \u2013 transplantation and dialysis",
+                  table = desc_flow_all(desc_sheets),
                   note  = "Unrounded counts. Excluded = difference with the previous step."),
       other = list(title = "Linkage & other",
                    table = desc_other_table(desc_sheets),
