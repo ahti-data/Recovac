@@ -1051,7 +1051,7 @@ desc_char_table <- function(sh, adults = TRUE) {
 
 desc_frailty_long <- function(sh) {
   src <- c(gen = "frailty_group_genpop", dia = "frailty_group_dia", ktr = "frailty_group_ktr")
-  lab <- c(low = "Laag", middle = "Midden", high = "Hoog")
+  lab <- c(low = "Low", middle = "Mid", high = "High")
   d <- rbindlist(lapply(names(src), function(k) {
     x <- copy(sh[[src[[k]]]]); x[, groep := k]; x
   }))
@@ -1078,7 +1078,7 @@ desc_frailty_cutoffs <- function(sh) {
   cut <- which(!is.na(a) & !is.na(b))
   txt_rows <- which(p[[1]] %in% c("low", "mid", "high"))
   list(cutoffs = data.table(Percentiel = a[cut], Score = b[cut]),
-       shares  = data.table(Groep = c("Laag", "Midden", "Hoog")[match(p[[1]][txt_rows], c("low", "mid", "high"))],
+       shares  = data.table(Groep = c("Low", "Mid", "High")[match(p[[1]][txt_rows], c("low", "mid", "high"))],
                             Percentage = num(p[[2]][txt_rows])))
 }
 
@@ -1086,7 +1086,10 @@ desc_flow_table <- function(sh, which = c("ktr", "dia")) {
   which <- match.arg(which)
   d <- copy(sh[[paste("flow diagram", which)]])
   d <- d[!is.na(pop)]
+  # "ktr" = transplantatie; in het dialyseblad staat per abuis "Ktr pop" bij de eerste stap
   if (which == "dia") d[grepl("^Ktr pop", pop), pop := "Dialysepopulatie Nefrovisie (fpn)"]
+  d[, pop := sub("^Ktr pop", "Transplantatiepopulatie", pop)]
+  d[, pop := gsub("\\bktr\\b", "transplantatie", pop)]
   d[, .(Stap = pop,
         N = desc_fmt_n(aantal_new),
         Uitgesloten = ifelse(is.na(excluded_new), "", desc_fmt_n(excluded_new)))]
@@ -1098,8 +1101,8 @@ desc_other_table <- function(sh) {
            n_txt = desc_fmt_n(n), pct_txt = paste0(desc_fmt_pct(pct), "%"))]
   out <- k[, .(Onderdeel, Categorie, Populatie = "Transplantatie", n = n_txt, `%` = pct_txt)]
   pt <- sh[["prev tp"]]
-  rbind(out, data.table(Onderdeel = "Eerdere transplantatie", Categorie = "",
-                        Populatie = "niet vermeld in bron", n = desc_fmt_n(pt[[1]][1]), `%` = DESC_NA))
+  rbind(out, data.table(Onderdeel = "Eerder getransplanteerd, nu dialyse (peildatum 1 jan 2020)", Categorie = "",
+                        Populatie = "Dialyse", n = desc_fmt_n(pt[[1]][1]), `%` = DESC_NA))
 }
 
 # =============================================================================
@@ -1984,11 +1987,9 @@ server <- function(input, output, session) {
                      table = desc_frailty_table(desc_sheets),
                      note  = {
                        fc <- desc_frailty_cutoffs(desc_sheets)
-                       paste0("Aantal (% van de kolom). Frailty-percentielen in het bronbestand: ",
-                              paste0("P", desc_fmt_num(fc$cutoffs$Percentiel), " = score ",
-                                     desc_fmt_num(fc$cutoffs$Score), collapse = "; "),
-                              ". Verdeling in het bronbestand: ",
-                              paste0(tolower(fc$shares$Groep), " ", desc_fmt_num(fc$shares$Percentage), "%",
+                       paste0("Aantal (% van de kolom). Groepen: Low / Mid / High frailty. ",
+                              "Referentieverdeling uit het bronbestand: ",
+                              paste0(fc$shares$Groep, " ", desc_fmt_num(fc$shares$Percentage), "%",
                                      collapse = ", "), ".")
                      }),
       flow = list(title = paste("Flow-diagram \u2013",
@@ -2018,7 +2019,7 @@ server <- function(input, output, session) {
       geom_col(width = 0.6, colour = "grey30", linewidth = 0.3) +
       geom_text(aes(label = paste0(desc_fmt_pct(pct), "%")),
                 position = position_stack(vjust = 0.5), size = 3.5) +
-      scale_fill_manual(values = c(Laag = "#a6cee3", Midden = "#fdbf6f", Hoog = "#e31a1c")) +
+      scale_fill_manual(values = c(Low = "#a6cee3", Mid = "#fdbf6f", High = "#e31a1c")) +
       coord_flip() +
       labs(x = NULL, y = "% van de groep", fill = "Frailty") +
       theme_minimal(base_size = 13) +
