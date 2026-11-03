@@ -2,7 +2,6 @@ library(shiny)
 library(data.table)
 library(ggplot2)
 library(colourpicker)
-library(shinymanager)
 library(readxl)
 library(DT)
 library(plotly)
@@ -1109,28 +1108,8 @@ desc_other_table <- function(sh) {
 # SHINY APP
 # =============================================================================
 
-# Lokale modus: automatisch aan als het sqlite-wachtwoordbestand niet aanwezig is.
-# Op de server staat het bestand wel -> normaal gedrag met login.
-# Lokaal ontbreekt het -> login overgeslagen, app direct zichtbaar.
-LOCAL_MODE <- !file.exists("/srv/shiny-server/passwords.sqlite")
-
 ui <- navbarPage(
   title = "SMR & Regressie Explorer",
-  header = tags$head(
-    tags$style("body { visibility: hidden; }"),
-    tags$script(HTML("
-      $(document).on('shiny:connected', function() {
-        Shiny.addCustomMessageHandler('show_app', function(x) {
-          document.body.style.visibility = 'visible';
-        });
-        Shiny.addCustomMessageHandler('no_access_redirect', function(x) {
-          document.body.style.visibility = 'visible';
-          document.body.innerHTML = '<div style=\"display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;background:white;\"><h1>Geen toegang</h1><p>Je hebt geen toegang tot deze app.</p><p>Je wordt teruggestuurd naar het loginscherm...</p></div>';
-          setTimeout(function(){ location.reload(); }, 5000);
-        });
-      });
-    "))
-  ),
   
   # ---- TAB 1: SMR & Mortality Rate ----
   tabPanel(
@@ -1495,37 +1474,6 @@ ui <- navbarPage(
 
 
 server <- function(input, output, session) {
-  
-  # --- Lokale modus: shinymanager overslaan als sqlite-bestand ontbreekt ---
-  if (LOCAL_MODE) {
-    session$sendCustomMessage("show_app", TRUE)
-  } else {
-    res_auth <- secure_server(
-      check_credentials = check_credentials(
-        db = "/srv/shiny-server/passwords.sqlite"
-      )
-    )
-    auth_ok <- reactiveVal(FALSE)
-    
-    observe({
-      req(reactiveValuesToList(res_auth)$user)
-      user_apps <- reactiveValuesToList(res_auth)$apps
-      if (user_apps == "all") {
-        auth_ok(TRUE)
-        session$sendCustomMessage("show_app", TRUE)
-      } else {
-        allowed <- unlist(strsplit(user_apps, ","))
-        app_name <- basename(getwd())
-        if (app_name %in% allowed) {
-          auth_ok(TRUE)
-          session$sendCustomMessage("show_app", TRUE)
-        } else {
-          session$sendCustomMessage("no_access_redirect", TRUE)
-        }
-      }
-    })
-  }
-  
   
   # --- Data: twee SMR-bestanden (standaard = met SES-correctie; en zonder SES) ---
   load_smr <- function(path) {
@@ -2032,4 +1980,4 @@ server <- function(input, output, session) {
   )
 }
 
-shinyApp(if (LOCAL_MODE) ui else secure_app(ui, enable_admin = TRUE), server)
+shinyApp(ui, server)
